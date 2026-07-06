@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kubebot"
+version = "0.2.0"
+description = "AKS diagnostic CLI agent combining Azure OpenAI + RAG with live Kubernetes cluster access"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "langchain<0.4.0",
+    "langchain-community",
+    "langchain-openai",
+    "langchain-ollama",
+    "langchain-chroma",
+    "kubernetes",
+    "rich",
+    "pypdf",
+    "python-dotenv",
+    "platformdirs",
+    "beautifulsoup4",
+    "InquirerPy",
+]
+
+[project.scripts]
+kubebot = "kubebot.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["kubebot*"]
+
+[tool.setuptools.data-files]
+"share/kubebot/RAG_Inputdocs" = [
+    "RAG_Inputdocs/aks_troubleshooting.txt",
+    "RAG_Inputdocs/application_errors_guide.txt",
+]

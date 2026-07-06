@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+build/
+dist/
+venv/
+env/
+ENV/
+
+# Environment variables
+.env
+
+# ChromaDB
+chroma_db/**/*
+*.sqlite3
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Local operational notes (intentionally not published)
+local-devops-docs/
+
+venv/
+.env
+RAG_Inputdocs/application_errors.txt
+
+# Terraform
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/*.tfplan
+terraform/crash.log
+terraform/crash.*.log
+# Terraform state now lives remotely in the azurerm backend (see terraform/versions.tf).
+# local .tfstate files should never exist/be committed.
+# .terraform.lock.hcl IS committed intentionally (pins provider versions).
+terraform/*.tfvars
+!terraform/*.tfvars.example

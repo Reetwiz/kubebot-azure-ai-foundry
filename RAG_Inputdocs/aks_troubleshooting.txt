@@ -1,0 +1,271 @@
+# AKS Troubleshooting Guide
+
+## CrashLoopBackOff
+If a pod is in CrashLoopBackOff, it means the container is starting, crashing, and restarting repeatedly.
+Common causes:
+1. Application errors: Check logs using `kubectl logs <pod-name> -n <namespace>`.
+2. Misconfiguration: Missing environment variables or config maps. Verify with `kubectl describe pod <pod-name>`.
+3. Liveness Probes: The application takes too long to start, and Kubernetes kills it. Increase `initialDelaySeconds` in the deployment spec.
+4. Image Issues: Wrong entrypoint or CMD in the Dockerfile.
+
+Resolution Steps:
+- Run: `kubectl logs <pod-name> -n <namespace> --previous` to see logs from the crashed container.
+- Check events: `kubectl describe pod <pod-name> -n <namespace>`
+- Review deployment YAML for probe settings and environment variables.
+- Test the container locally with Docker to verify startup behavior.
+
+## ImagePullBackOff
+The node cannot pull the container image from the registry.
+Common causes:
+1. Check if the image name and tag are correct in the deployment spec.
+2. Verify Azure Container Registry (ACR) authentication is properly configured.
+3. Ensure the secret is present in the namespace: `kubectl get secrets -n <namespace>`.
+4. Check if the service principal or managed identity has AcrPull permissions.
+5. Network policies blocking egress to the registry.
+
+Resolution Steps:
+- Verify image exists: `az acr repository show -n <registry-name> --image <image:tag>`
+- Check imagePullSecrets in the pod spec.
+- Create secret if missing: `kubectl create secret docker-registry <secret-name> --docker-server=<registry-url> --docker-username=<username> --docker-password=<password>`
+- Attach ACR to AKS: `az aks update -n <cluster-name> -g <resource-group> --attach-acr <acr-name>`
+
+## OOMKilled (Out of Memory)
+The container tried to use more RAM than allowed by the resource limit, and was killed by the kernel.
+Common causes:
+1. Check the pod's memory limit in the deployment YAML.
+2. Profile the application for memory leaks or inefficient memory usage.
+3. Increase the memory limit in the deployment spec if legitimate.
+4. Memory spikes during initialization or processing large datasets.
+
+Resolution Steps:
+- Check resource usage: `kubectl top pod <pod-name> -n <namespace>`
+- Review limits and requests in the deployment:
+  ```yaml
+  resources:
+    requests:
+      memory: "256Mi"
+    limits:
+      memory: "512Mi"
+  ```
+- Monitor with: `kubectl describe pod <pod-name>` and look for "Last State: Terminated, Reason: OOMKilled"
+- Increase limits gradually and monitor. Ensure requests match actual usage patterns.
+
+## Pending State
+The pod cannot be scheduled onto any node in the cluster.
+Common causes:
+1. Resource constraints: No nodes have enough CPU/RAM available.
+2. Taints and Tolerations: Nodes are tainted, and the pod lacks the required toleration.
+3. PVC Issues: The persistent volume claim cannot be bound to a volume.
+4. Node Affinity/Anti-Affinity rules prevent scheduling.
+5. Pod Security Policies or Pod Security Standards blocking admission.
+
+Resolution Steps:
+- Check pod events: `kubectl describe pod <pod-name> -n <namespace>`
+- View node resources: `kubectl describe nodes` or `kubectl top nodes`
+- Check for taints: `kubectl describe node <node-name> | grep Taints`
+- Add tolerations if needed in pod spec:
+  ```yaml
+  tolerations:
+  - key: "key1"
+    operator: "Equal"
+    value: "value1"
+    effect: "NoSchedule"
+  ```
+- Scale cluster if resources are exhausted: `az aks scale --name <cluster-name> --resource-group <rg> --node-count <count>`
+
+## NodeNotReady
+One or more nodes in the cluster are in NotReady state, preventing pod scheduling.
+Common causes:
+1. Kubelet issues: The kubelet service on the node has stopped or crashed.
+2. Network problems: Node cannot communicate with the control plane.
+3. Disk pressure: Node has run out of disk space.
+4. Memory pressure: Node is low on memory.
+5. VM issues in Azure: Underlying VM might have issues.
+
+Resolution Steps:
+- Check node status: `kubectl get nodes`
+- Describe the node: `kubectl describe node <node-name>`
+- Check node conditions: Look for DiskPressure, MemoryPressure, NetworkUnavailable.
+- SSH to node (if accessible) and check kubelet logs: `journalctl -u kubelet`
+- Restart the node pool or specific node in Azure Portal or via CLI.
+- If persistent, consider replacing the node.
+
+## Ingress Not Working
+External traffic is not reaching services through the ingress controller.
+Common causes:
+1. Ingress controller not properly installed (nginx, traefik, etc.).
+2. Ingress resource misconfigured (wrong service name, port, or path).
+3. DNS not pointing to the ingress controller's external IP.
+4. TLS/SSL certificate issues.
+5. Network Security Group (NSG) or firewall rules blocking traffic.
+
+Resolution Steps:
+- Verify ingress controller is running: `kubectl get pods -n ingress-nginx`
+- Check ingress resource: `kubectl get ingress -n <namespace>` and `kubectl describe ingress <ingress-name>`
+- Get external IP: `kubectl get svc -n ingress-nginx`
+- Test service directly: `kubectl port-forward svc/<service-name> 8080:80`
+- Check DNS: Ensure A record points to ingress IP.
+- Review ingress annotations and backend service configuration.
+- Check certificate secrets for TLS ingress.
+
+## PVC Stuck in Pending
+Persistent Volume Claim is not binding to a Persistent Volume.
+Common causes:
+1. No available PV that matches the PVC's storage class and size.
+2. Storage class not properly configured or doesn't exist.
+3. Azure Disk quota exhausted in the subscription.
+4. Access mode mismatch (ReadWriteOnce, ReadWriteMany).
+5. Volume provisioning failed due to permissions.
+
+Resolution Steps:
+- Check PVC status: `kubectl describe pvc <pvc-name> -n <namespace>`
+- Verify storage class exists: `kubectl get storageclass`
+- Check events for provisioning errors.
+- Ensure the storage class has a provisioner (e.g., disk.csi.azure.com).
+- Verify Azure subscription has available disk quota.
+- For static provisioning, ensure PV exists with matching specifications.
+
+## ConfigMap or Secret Not Mounted
+Application cannot read configuration data from ConfigMaps or Secrets.
+Common causes:
+1. ConfigMap or Secret doesn't exist in the namespace.
+2. Incorrect volume mount path in the pod spec.
+3. Wrong key names referenced in environment variables.
+4. RBAC permissions preventing access.
+5. Pod not restarted after ConfigMap/Secret update.
+
+Resolution Steps:
+- Verify resource exists: `kubectl get configmap -n <namespace>` or `kubectl get secret -n <namespace>`
+- Check pod spec for correct volumeMounts and volumes sections.
+- Describe the pod to see mount errors: `kubectl describe pod <pod-name>`
+- Exec into pod and verify mount: `kubectl exec -it <pod-name> -- ls /path/to/mount`
+- For env vars, check the pod's environment: `kubectl exec <pod-name> -- env`
+- Restart deployment after updating ConfigMap: `kubectl rollout restart deployment <deployment-name>`
+
+## Service Endpoint Not Available
+Service has no endpoints, meaning no pods are backing the service.
+Common causes:
+1. No pods match the service selector labels.
+2. Pods exist but are not in Ready state.
+3. Label mismatch between service selector and pod labels.
+4. Pods are in a different namespace than the service.
+
+Resolution Steps:
+- Check service endpoints: `kubectl get endpoints <service-name> -n <namespace>`
+- Verify service selector: `kubectl describe service <service-name>`
+- List pods with matching labels: `kubectl get pods -l <label-key>=<label-value> -n <namespace>`
+- Ensure pods are Ready: `kubectl get pods -n <namespace>`
+- Compare labels: Check both service spec and pod template labels match exactly.
+- If using headless service, ensure pods have proper DNS entries.
+
+## High Pod Restart Count
+Pods are restarting frequently, indicating instability.
+Common causes:
+1. Application crashes or unhandled exceptions.
+2. Failed liveness probes causing Kubernetes to restart the pod.
+3. Resource constraints causing OOMKills.
+4. External dependency failures (database, API timeouts).
+5. Pod disruption budget settings.
+
+Resolution Steps:
+- Check restart count: `kubectl get pods -n <namespace>`
+- View logs from previous container: `kubectl logs <pod-name> --previous`
+- Describe pod for restart reason: `kubectl describe pod <pod-name>`
+- Review liveness/readiness probe configuration.
+- Check resource metrics: `kubectl top pod <pod-name>`
+- Adjust probe parameters (increase timeout, period, failure threshold).
+- Fix application code if crashes are due to bugs.
+
+## DNS Resolution Failures (CoreDNS)
+Pods cannot resolve internal service names or external hostnames.
+Common causes:
+1. CoreDNS pods in kube-system are unhealthy, crashed, or under-resourced.
+2. NetworkPolicy blocking egress to UDP/TCP 53 (DNS).
+3. Node's /etc/resolv.conf misconfigured or upstream DNS unreachable.
+4. Custom DNS config (`dnsPolicy`/`dnsConfig`) set incorrectly on the pod spec.
+5. CoreDNS ConfigMap (`coredns` in kube-system) has a bad custom zone/forward rule.
+
+Resolution Steps:
+- Check CoreDNS pods: `kubectl get pods -n kube-system -l k8s-app=kube-dns`
+- View CoreDNS logs: `kubectl logs -n kube-system -l k8s-app=kube-dns`
+- Test resolution from a debug pod: `kubectl run -it --rm dnsutils --image=registry.k8s.io/e2e-test-images/jessie-dnsutils -- nslookup kubernetes.default`
+- Inspect the CoreDNS ConfigMap: `kubectl describe configmap coredns -n kube-system`
+- Check for NetworkPolicies restricting DNS egress in the pod's namespace.
+- Restart CoreDNS if stuck: `kubectl rollout restart deployment coredns -n kube-system`
+
+## RBAC Forbidden Errors (403)
+API requests fail with "Forbidden" even though the user/service account should have access.
+Common causes:
+1. Missing or incorrect RoleBinding/ClusterRoleBinding for the identity.
+2. Azure AD group-based RBAC not synced (Azure RBAC for Kubernetes Authorization).
+3. Service account lacks a Role granting the specific verb/resource.
+4. Namespace-scoped Role used where a ClusterRole was actually needed (or vice versa).
+5. Azure AD token expired or wrong tenant used against `kubelogin`.
+
+Resolution Steps:
+- Check what a user/service account can do: `kubectl auth can-i <verb> <resource> --as=<user> -n <namespace>`
+- List bindings: `kubectl get rolebindings,clusterrolebindings -A -o wide | grep <name>`
+- Describe the Role/ClusterRole to confirm the verb/resource is included.
+- For Azure AD integrated clusters, verify the AAD group ID matches the RoleBinding subject.
+- Re-authenticate: `az aks get-credentials --resource-group <rg> --name <cluster> --overwrite-existing` then re-run `kubelogin`.
+
+## Node Autoscaler / HPA Not Scaling
+Horizontal Pod Autoscaler or Cluster Autoscaler isn't adding replicas/nodes under load.
+Common causes:
+1. Metrics Server not installed or not reporting metrics.
+2. HPA target (CPU/memory) never crosses the configured threshold.
+3. Cluster Autoscaler disabled on the node pool, or max node count already reached.
+4. Pods request more CPU/memory than any node pool's SKU can provide (unschedulable).
+5. Pod Disruption Budgets or taints preventing the autoscaler from acting.
+
+Resolution Steps:
+- Check HPA status: `kubectl get hpa -n <namespace>` and `kubectl describe hpa <name> -n <namespace>`
+- Verify metrics-server is running: `kubectl get pods -n kube-system -l k8s-app=metrics-server`
+- Check current vs target metrics with `kubectl top pods -n <namespace>`.
+- For Cluster Autoscaler, check node pool settings: `az aks nodepool show -g <rg> --cluster-name <cluster> -n <pool> --query "[enableAutoScaling,minCount,maxCount]"`
+- Look for Pending pods and check scheduling events: `kubectl describe pod <pod-name>`
+
+## Network Policy Blocking Traffic
+Pods can't reach each other or external services after a NetworkPolicy is applied.
+Common causes:
+1. A default-deny NetworkPolicy exists without a matching allow rule for the traffic.
+2. Label selectors in the NetworkPolicy don't match the actual pod/namespace labels.
+3. Azure CNI network policy engine (Azure NPM/Calico/Cilium) misconfigured.
+4. Ingress/egress rules only cover one direction of the traffic.
+
+Resolution Steps:
+- List policies: `kubectl get networkpolicy -A`
+- Describe the relevant policy and compare selectors against `kubectl get pods --show-labels`.
+- Temporarily test connectivity by removing/loosening the policy in a non-prod namespace only.
+- Check which network policy engine is enabled: `az aks show -g <rg> -n <cluster> --query networkProfile.networkPolicy`
+- Use `kubectl exec` + `curl`/`nc` between pods to isolate which hop is blocked.
+
+## Cluster/Node Pool Upgrade Failures
+An AKS control plane or node pool upgrade gets stuck or fails.
+Common causes:
+1. Pod Disruption Budgets prevent node draining during the upgrade.
+2. Insufficient quota for the extra "surge" node used during upgrade.
+3. Custom admission webhooks blocking system pod scheduling on new nodes.
+4. Node pool has taints/labels that don't match required system pod tolerations.
+
+Resolution Steps:
+- Check upgrade status: `az aks show -g <rg> -n <cluster> --query "provisioningState"`
+- Review node pool events and node conditions: `kubectl get nodes -o wide` and `kubectl describe node <node>`
+- Check PDBs that might be blocking eviction: `kubectl get pdb -A`
+- Increase max surge if upgrades are slow: `az aks nodepool update -g <rg> --cluster-name <cluster> -n <pool> --max-surge 33%`
+- Check activity log in Azure Portal for the specific upgrade failure reason.
+
+## Azure Workload Identity / Managed Identity Failures
+Pods fail to authenticate to Azure resources (Key Vault, Storage, ACR, etc.).
+Common causes:
+1. Workload Identity webhook not injecting the expected environment variables/volumes.
+2. Federated credential's subject (namespace/service account) doesn't match the pod's.
+3. Managed identity lacks the required Azure RBAC role assignment on the target resource.
+4. Service account missing the `azure.workload.identity/client-id` annotation.
+
+Resolution Steps:
+- Confirm the service account annotation: `kubectl get sa <sa-name> -n <namespace> -o yaml`
+- Check the pod has the injected env vars: `kubectl exec <pod-name> -- env | grep AZURE`
+- Verify the federated credential subject matches `system:serviceaccount:<namespace>:<sa-name>` exactly.
+- Check role assignments on the target resource: `az role assignment list --assignee <client-id>`
+- Review workload identity webhook logs: `kubectl logs -n kube-system -l azure-workload-identity.io/system=true`

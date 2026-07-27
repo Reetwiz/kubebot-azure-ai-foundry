@@ -1,0 +1,25 @@
+# Generic Application Error Troubleshooting
+
+## Invalid request
+
+- Confirm required fields are present and use the documented data types.
+- Check array and date query parameters for the format expected by the API.
+- Compare the request with a known working example before changing the service.
+
+## Authentication or authorization failure
+
+- Confirm the token is current, intended for the API audience, and issued by the expected identity provider.
+- Check that the caller has the required role or scope.
+- Do not print tokens or Kubernetes Secrets while troubleshooting.
+
+## Dependency unavailable
+
+- Inspect pod readiness, recent events, and service endpoints.
+- Check DNS resolution and NetworkPolicy rules from the affected namespace.
+- Confirm database or upstream service health without exposing connection strings.
+
+## Internal server error
+
+- Correlate the request ID with application logs.
+- Find the first exception in the stack rather than relying on the final wrapper error.
+- Check recent deployments and configuration changes.

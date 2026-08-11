@@ -1,0 +1,8 @@
+# Copy this file to terraform.tfvars and fill in your own values.
+# terraform.tfvars is gitignored — never commit real IDs.
+
+subscription_id = "00000000-0000-0000-0000-000000000000"
+tenant_id       = "00000000-0000-0000-0000-000000000000"
+resource_group_name    = "example-resource-group"
+cognitive_account_name = "example-kubebot-foundry"
+location               = "westus"

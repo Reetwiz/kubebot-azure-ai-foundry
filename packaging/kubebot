@@ -1,0 +1,7 @@
+#!/usr/bin/env sh
+PYTHON=$(find /usr/lib/kubebot/runtime -path '*/bin/python3.12' -type f -print -quit)
+if [ -z "$PYTHON" ]; then
+	echo "KubeBot's bundled Python runtime is missing." >&2
+	exit 1
+fi
+exec "$PYTHON" -m kubebot "$@"

@@ -1,0 +1,23 @@
+name: kubebot
+arch: amd64
+platform: linux
+version: ${VERSION}
+section: utils
+priority: optional
+maintainer: KubeBot maintainers
+description: Read-only Kubernetes troubleshooting assistant using Azure OpenAI or Ollama
+vendor: KubeBot
+homepage: https://github.com/Reetwiz/kubebot-azure-ai-foundry
+license: MIT
+contents:
+  - src: dist/package-root/usr/lib/kubebot
+    dst: /usr/lib/kubebot/
+    type: tree
+  - src: packaging/kubebot
+    dst: /usr/bin/kubebot
+    file_info:
+      mode: 0755
+overrides:
+  deb: {}
+  rpm: {}
+  archlinux: {}

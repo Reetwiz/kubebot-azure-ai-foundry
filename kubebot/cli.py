@@ -2,12 +2,14 @@
 the main REPL loop.
 """
 
+import argparse
 import re
 
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.prompt import Prompt
 
+from kubebot import __version__
 from kubebot import config, kube_client, llm
 from kubebot.agent import ActivityMonitor, append_turn, run_agent
 from kubebot.console import console
@@ -70,6 +72,10 @@ def print_welcome():
 
 def main():
     """Main application loop."""
+    parser = argparse.ArgumentParser(description="Read-only Kubernetes troubleshooting assistant")
+    parser.add_argument("--version", action="version", version=f"KubeBot {__version__}")
+    parser.parse_args()
+
     config.configure_provider()
     try:
         llm.init()

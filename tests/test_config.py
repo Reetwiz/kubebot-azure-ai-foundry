@@ -1,10 +1,16 @@
 import unittest
 from unittest.mock import patch
 
-from kubebot import config
+from kubebot import cli, config
 
 
 class ProviderConfigurationTests(unittest.TestCase):
+    def test_version_flag_exits_before_provider_setup(self):
+        with patch("sys.argv", ["kubebot", "--version"]), self.assertRaises(SystemExit) as result:
+            cli.main()
+
+        self.assertEqual(result.exception.code, 0)
+
     def test_explicit_ollama_provider_needs_no_azure_credentials(self):
         with patch.object(config, "LLM_PROVIDER", "ollama"), \
              patch.object(config, "AZURE_OPENAI_ENDPOINT", None), \

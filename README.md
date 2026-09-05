@@ -17,7 +17,24 @@ Clone the repository, then use the script for your platform.
 
 ### Linux
 
-The installer recognizes Debian, Ubuntu, Fedora, RHEL, Rocky, AlmaLinux, Arch, Manjaro, openSUSE, and SLES.
+Download the package for your distribution from the GitHub release. The primary tested families are:
+
+- Debian and Ubuntu (`.deb`)
+- Fedora and RHEL (`.rpm`)
+- Arch and Manjaro (`.pkg.tar.zst`)
+
+```bash
+# Debian or Ubuntu
+sudo apt install ./kubebot_0.2.0_amd64.deb
+
+# Fedora or RHEL
+sudo dnf install ./kubebot-0.2.0-1.x86_64.rpm
+
+# Arch or Manjaro
+sudo pacman -U ./kubebot-0.2.0-1-x86_64.pkg.tar.zst
+```
+
+These packages vendor KubeBot's Python libraries and a private Python runtime under `/usr/lib/kubebot`, then expose `/usr/bin/kubebot`. Installation does not modify the system Python, run `pip`, or download Python code. The existing source installer remains available:
 
 ```bash
 ./scripts/install-linux.sh
@@ -38,7 +55,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\install-windows.ps1
 ```
 
-The scripts install Python tooling and `kubectl` when needed, then install KubeBot with `pipx`. To do it manually:
+The scripts install Python tooling, install `kubectl` where the distribution provides it, and then install KubeBot with `pipx`. If `kubectl` is still missing, the Linux script links to the official installation guide. To install KubeBot manually:
 
 ```bash
 python3 -m pip install --user pipx
@@ -103,6 +120,8 @@ python -m kubebot
 
 ## Releases
 
-Tagged releases provide immutable source archives and installable Python wheels. GitHub Actions validates Linux, macOS, and Windows on every push and attaches wheel and source distributions to tags matching `v*`.
+Tagged releases provide source archives, Python wheels, and native Linux packages. CI installs each native package in a clean Ubuntu, Fedora, or Arch container and runs `kubebot --version`. GitHub Actions publishes the artifacts for tags matching `v*`.
+
+GitHub Releases are currently the download source. A true APT or DNF repository additionally needs a stable HTTPS host, signed repository metadata, key rotation, and index publication; installing a downloaded `.deb` with `apt install ./file.deb` does not require that infrastructure.
 
 See [terraform-README.md](terraform-README.md) for the optional Azure AI Foundry infrastructure example.

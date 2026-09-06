@@ -74,7 +74,13 @@ def main():
     """Main application loop."""
     parser = argparse.ArgumentParser(description="Read-only Kubernetes troubleshooting assistant")
     parser.add_argument("--version", action="version", version=f"KubeBot {__version__}")
-    parser.parse_args()
+    parser.add_argument("--configure", action="store_true", help="configure the model provider and exit")
+    args = parser.parse_args()
+
+    if args.configure:
+        config.configure_provider(force_prompt=True)
+        console.print(f"[green]Configuration saved to {config.CONFIG_FILE}[/green]")
+        return
 
     config.configure_provider()
     try:

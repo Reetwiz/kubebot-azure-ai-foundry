@@ -11,9 +11,20 @@ from rich.prompt import Confirm, Prompt
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CONFIG_DIR = user_config_path("kubebot", appauthor=False)
 CONFIG_FILE = CONFIG_DIR / ".env"
-load_dotenv(CONFIG_FILE)
-load_dotenv(Path.cwd() / ".env")
-load_dotenv(PROJECT_ROOT / ".env")
+RUNNING_FROM_SOURCE = (PROJECT_ROOT / "pyproject.toml").is_file()
+
+
+def _dotenv_paths():
+    yield CONFIG_FILE
+    if RUNNING_FROM_SOURCE:
+        yield Path.cwd() / ".env"
+        if PROJECT_ROOT != Path.cwd():
+            yield PROJECT_ROOT / ".env"
+
+
+for dotenv_path in _dotenv_paths():
+    load_dotenv(dotenv_path)
+
 INSTALL_DATA_ROOT = Path(sys.prefix) / "share" / "kubebot"
 DATA_ROOT = INSTALL_DATA_ROOT if (INSTALL_DATA_ROOT / "RAG_Inputdocs").exists() else PROJECT_ROOT
 
@@ -94,23 +105,23 @@ DEV_MODE = KUBEBOT_ENV in ("dev", "development")
 MAX_TURNS = 6
 
 
-def configure_provider():
+def configure_provider(force_prompt: bool = False):
     """Resolve the model provider, prompting only during an interactive launch."""
     global LLM_PROVIDER, PERSIST_DIR, AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY
 
-    if LLM_PROVIDER:
+    if LLM_PROVIDER and not force_prompt:
         if LLM_PROVIDER not in ("azure", "ollama"):
             raise RuntimeError("KUBEBOT_LLM_PROVIDER must be 'azure' or 'ollama'")
         validate_provider()
         PERSIST_DIR = user_data_path("kubebot", appauthor=False) / "chroma_db" / LLM_PROVIDER
         return
 
-    if AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY:
+    if AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY and not force_prompt:
         LLM_PROVIDER = "azure"
         PERSIST_DIR = user_data_path("kubebot", appauthor=False) / "chroma_db" / LLM_PROVIDER
         return
 
-    if not sys.stdin.isatty():
+    if not sys.stdin.isatty() and not force_prompt:
         raise RuntimeError(
             "No model provider configured. Set KUBEBOT_LLM_PROVIDER=ollama, or configure Azure OpenAI."
         )
@@ -130,33 +141,47 @@ def configure_provider():
         LLM_PROVIDER = "azure"
         validate_provider()
         PERSIST_DIR = user_data_path("kubebot", appauthor=False) / "chroma_db" / LLM_PROVIDER
-        if Confirm.ask("Save these settings for future launches?", default=True, console=console):
+        if force_prompt or Confirm.ask("Save these settings for future launches?", default=True, console=console):
             _save_azure_settings()
         return
 
     LLM_PROVIDER = "ollama"
     PERSIST_DIR = user_data_path("kubebot", appauthor=False) / "chroma_db" / LLM_PROVIDER
+    _save_settings(
+        [
+            "KUBEBOT_LLM_PROVIDER=ollama",
+            f"OLLAMA_BASE_URL={OLLAMA_BASE_URL}",
+            f"OLLAMA_CHAT_MODEL={OLLAMA_CHAT_MODEL}",
+            f"OLLAMA_EMBEDDING_MODEL={OLLAMA_EMBEDDING_MODEL}",
+        ]
+    )
     console.print(f"Using local Ollama at [cyan]{OLLAMA_BASE_URL}[/cyan].")
 
 
 def _save_azure_settings():
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    CONFIG_FILE.write_text(
-        "\n".join(
-            [
-                "KUBEBOT_LLM_PROVIDER=azure",
-                f"AZURE_OPENAI_ENDPOINT={AZURE_OPENAI_ENDPOINT}",
-                f"AZURE_OPENAI_API_KEY={AZURE_OPENAI_API_KEY}",
-                f"AZURE_OPENAI_API_VERSION={AZURE_OPENAI_API_VERSION}",
-                f"AZURE_OPENAI_CHAT_DEPLOYMENT={AZURE_OPENAI_CHAT_DEPLOYMENT}",
-                f"AZURE_OPENAI_EMBEDDING_DEPLOYMENT={AZURE_OPENAI_EMBEDDING_DEPLOYMENT}",
-                "",
-            ]
-        ),
-        encoding="utf-8",
+    _save_settings(
+        [
+            "KUBEBOT_LLM_PROVIDER=azure",
+            f"AZURE_OPENAI_ENDPOINT={AZURE_OPENAI_ENDPOINT}",
+            f"AZURE_OPENAI_API_KEY={AZURE_OPENAI_API_KEY}",
+            f"AZURE_OPENAI_API_VERSION={AZURE_OPENAI_API_VERSION}",
+            f"AZURE_OPENAI_CHAT_DEPLOYMENT={AZURE_OPENAI_CHAT_DEPLOYMENT}",
+            f"AZURE_OPENAI_EMBEDDING_DEPLOYMENT={AZURE_OPENAI_EMBEDDING_DEPLOYMENT}",
+        ]
     )
+
+
+def _save_settings(lines):
+    CONFIG_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
     if os.name != "nt":
-        CONFIG_FILE.chmod(0o600)
+        CONFIG_DIR.chmod(0o700)
+    temporary_file = CONFIG_FILE.with_suffix(".tmp")
+    descriptor = os.open(temporary_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+        stream.write("\n".join([*lines, ""]))
+        stream.flush()
+        os.fsync(stream.fileno())
+    temporary_file.replace(CONFIG_FILE)
 
 
 def validate_provider():

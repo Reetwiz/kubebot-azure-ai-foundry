@@ -31,3 +31,37 @@ jobs:
       - run: python -m pip install uv
       - run: ./scripts/build-linux-packages.sh
       - run: ./scripts/test-linux-packages.sh
+      - name: Test signed repository metadata
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y apt-utils createrepo-c dpkg-dev rpm
+          TEST_ROOT="$GITHUB_WORKSPACE/dist/repository-test" ./scripts/test-package-repositories.sh
+
+  installer-smoke:
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Test macOS installer
+        if: runner.os == 'macOS'
+        env:
+          KUBEBOT_INSTALL_SOURCE: .
+          KUBEBOT_SKIP_SYSTEM_PACKAGES: "1"
+        run: |
+          ./scripts/install-macos.sh
+          "$(python3 -m pipx environment --value PIPX_BIN_DIR)/kubebot" --version
+      - name: Test Windows installer
+        if: runner.os == 'Windows'
+        env:
+          KUBEBOT_INSTALL_SOURCE: .
+          KUBEBOT_SKIP_SYSTEM_PACKAGES: "1"
+        shell: pwsh
+        run: |
+          ./scripts/install-windows.ps1
+          $PipxBin = python -m pipx environment --value PIPX_BIN_DIR
+          & (Join-Path $PipxBin "kubebot.exe") --version

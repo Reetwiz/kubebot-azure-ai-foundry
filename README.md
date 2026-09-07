@@ -25,14 +25,34 @@ Download the package for your distribution from the GitHub release. The primary 
 
 ```bash
 # Debian or Ubuntu
-sudo apt install ./kubebot_0.2.0_amd64.deb
+sudo apt install ./kubebot_0.2.1_amd64.deb
 
 # Fedora or RHEL
-sudo dnf install ./kubebot-0.2.0-1.x86_64.rpm
+sudo dnf install ./kubebot-0.2.1-1.x86_64.rpm
 
 # Arch or Manjaro
-sudo pacman -U ./kubebot-0.2.0-1-x86_64.pkg.tar.zst
+sudo pacman -U ./kubebot-0.2.1-1-x86_64.pkg.tar.zst
 ```
+
+After the signed repository is published through GitHub Pages, add its dedicated key and source once. Verify the key fingerprint shown on the release page before trusting it.
+
+```bash
+# Debian or Ubuntu
+curl -fsSL https://reetwiz.github.io/kubebot-azure-ai-foundry/kubebot-archive-key.asc \
+	| gpg --dearmor \
+	| sudo tee /usr/share/keyrings/kubebot-archive-keyring.gpg >/dev/null
+echo "deb [arch=amd64 signed-by=/usr/share/keyrings/kubebot-archive-keyring.gpg] https://reetwiz.github.io/kubebot-azure-ai-foundry/apt stable main" \
+	| sudo tee /etc/apt/sources.list.d/kubebot.list
+sudo apt update && sudo apt install kubebot
+
+# Fedora or RHEL
+sudo rpm --import https://reetwiz.github.io/kubebot-azure-ai-foundry/kubebot-archive-key.asc
+sudo curl -fsSL https://reetwiz.github.io/kubebot-azure-ai-foundry/kubebot.repo \
+	-o /etc/yum.repos.d/kubebot.repo
+sudo dnf install kubebot
+```
+
+Arch/Manjaro additionally requires importing the same key into pacman's trust database and adding the `[kubebot]` server shown in the release notes. Repository bootstrap is intentionally not reduced to a `curl | sudo sh` command: review the key and repository definition before root trusts them.
 
 These packages vendor KubeBot's Python libraries and a private Python runtime under `/usr/lib/kubebot`, then expose `/usr/bin/kubebot`. Installation does not modify the system Python, run `pip`, or download Python code. The existing source installer remains available:
 
@@ -43,7 +63,8 @@ These packages vendor KubeBot's Python libraries and a private Python runtime un
 ### macOS
 
 ```bash
-./scripts/install-macos.sh
+curl -fsSLO https://raw.githubusercontent.com/Reetwiz/kubebot-azure-ai-foundry/main/scripts/install-macos.sh
+sh install-macos.sh
 ```
 
 ### Windows
@@ -52,10 +73,11 @@ Run PowerShell as your normal user:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
-.\scripts\install-windows.ps1
+Invoke-WebRequest https://raw.githubusercontent.com/Reetwiz/kubebot-azure-ai-foundry/main/scripts/install-windows.ps1 -OutFile install-windows.ps1
+.\install-windows.ps1
 ```
 
-The scripts install Python tooling, install `kubectl` where the distribution provides it, and then install KubeBot with `pipx`. If `kubectl` is still missing, the Linux script links to the official installation guide. To install KubeBot manually:
+The macOS and Windows scripts discover the latest GitHub release wheel and install it in an isolated `pipx` environment. They install Python or `kubectl` only when required. The Linux source installer still installs from a checkout. To install KubeBot manually from a cloned repository:
 
 ```bash
 python3 -m pip install --user pipx
@@ -72,12 +94,14 @@ Run `kubebot`. On the first interactive launch, KubeBot offers two providers:
 - **Ollama:** no account or API key. Install Ollama, then pull `llama3.1:8b` and `nomic-embed-text`.
 - **Azure OpenAI:** enter the endpoint and API key at the masked prompts. KubeBot can save them in the operating system's user config directory. On Linux and macOS, the file is created with mode `0600`.
 
+Run `kubebot --configure` later to replace the saved provider configuration without starting the model or connecting to Kubernetes.
+
 ```bash
 ollama pull llama3.1:8b
 ollama pull nomic-embed-text
 ```
 
-For unattended launches, copy `.env.example` to `.env` and set `KUBEBOT_LLM_PROVIDER=azure` or `KUBEBOT_LLM_PROVIDER=ollama`. Never commit `.env`.
+Packaged installs do not read `.env` from the launch directory. They use the interactive setup saved in the operating system's user config directory, or explicit environment variables supplied by a service manager. For development from a checkout, copy `.env.development.example` to `.env`. Never commit `.env`.
 
 If Azure cannot start and `KUBEBOT_OLLAMA_FALLBACK=true`, an interactive launch offers to continue with Ollama. Azure and Ollama use separate local vector stores because their embedding dimensions may differ.
 
@@ -106,7 +130,7 @@ Use a least-privilege, read-only Kubernetes identity. KubeBot prevents mutation 
 
 ## Configuration
 
-Common settings are documented in `.env.example`. LangSmith variables are optional. Local Chroma data is stored under the platform's user data directory, not in the repository.
+Development settings are documented in `.env.development.example`. LangSmith variables are optional. Local Chroma data is stored under the platform's user data directory, not in the repository.
 
 ## Development
 

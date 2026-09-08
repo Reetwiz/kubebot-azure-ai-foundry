@@ -34,7 +34,7 @@ sudo dnf install ./kubebot-0.2.1-1.x86_64.rpm
 sudo pacman -U ./kubebot-0.2.1-1-x86_64.pkg.tar.zst
 ```
 
-After the signed repository is published through GitHub Pages, add its dedicated key and source once. Verify the key fingerprint shown on the release page before trusting it.
+The signed repository is live on GitHub Pages. Add its dedicated key and source once. Verify that the key fingerprint is `392D F082 EBF8 96F1 CDC4 1ACE E917 159F 598C 024A` before trusting it.
 
 ```bash
 # Debian or Ubuntu
@@ -52,7 +52,19 @@ sudo curl -fsSL https://reetwiz.github.io/kubebot-azure-ai-foundry/kubebot.repo 
 sudo dnf install kubebot
 ```
 
-Arch/Manjaro additionally requires importing the same key into pacman's trust database and adding the `[kubebot]` server shown in the release notes. Repository bootstrap is intentionally not reduced to a `curl | sudo sh` command: review the key and repository definition before root trusts them.
+For Arch or Manjaro:
+
+```bash
+curl -fsSLO https://reetwiz.github.io/kubebot-azure-ai-foundry/kubebot-archive-key.asc
+fingerprint=$(gpg --show-keys --with-colons kubebot-archive-key.asc | awk -F: '$1 == "fpr" {print $10; exit}')
+sudo pacman-key --add kubebot-archive-key.asc
+sudo pacman-key --lsign-key "$fingerprint"
+printf '\n[kubebot]\nServer = https://reetwiz.github.io/kubebot-azure-ai-foundry/arch/x86_64\nSigLevel = Required DatabaseOptional\n' \
+	| sudo tee -a /etc/pacman.conf
+sudo pacman -Syu kubebot
+```
+
+Repository bootstrap is intentionally not reduced to a `curl | sudo sh` command: review the key, fingerprint, and repository definition before root trusts them.
 
 These packages vendor KubeBot's Python libraries and a private Python runtime under `/usr/lib/kubebot`, then expose `/usr/bin/kubebot`. Installation does not modify the system Python, run `pip`, or download Python code. The existing source installer remains available:
 
@@ -146,6 +158,6 @@ python -m kubebot
 
 Tagged releases provide source archives, Python wheels, and native Linux packages. CI installs each native package in a clean Ubuntu, Fedora, or Arch container and runs `kubebot --version`. GitHub Actions publishes the artifacts for tags matching `v*`.
 
-GitHub Releases are currently the download source. A true APT or DNF repository additionally needs a stable HTTPS host, signed repository metadata, key rotation, and index publication; installing a downloaded `.deb` with `apt install ./file.deb` does not require that infrastructure.
+GitHub Releases provide direct artifacts, while GitHub Pages hosts signed APT, DNF, and Arch repositories for package-name installation and upgrades. Installing a downloaded `.deb` with `apt install ./file.deb` is still supported and does not register a repository.
 
 See [terraform-README.md](terraform-README.md) for the optional Azure AI Foundry infrastructure example.
